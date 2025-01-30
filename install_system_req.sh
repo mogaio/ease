@@ -1,100 +1,88 @@
 #!/usr/bin/env bash
 
-# posix compliant sanity check
-if [ -z $BASH ] || [  $BASH = "/bin/sh" ]; then
+# POSIX-compliant sanity check
+if [ -z "$BASH" ] || [ "$BASH" = "/bin/sh" ]; then
     echo "Please use the bash interpreter to run this script"
     exit 1
 fi
 
 error() {
-      printf '\E[31m'; echo "$@"; printf '\E[0m'
-}
-output() {
-      printf '\E[36m'; echo "$@"; printf '\E[0m'
+    printf '\E[31m'; echo "$@"; printf '\E[0m'  # Print in red
 }
 
+output() {
+    printf '\E[36m'; echo "$@"; printf '\E[0m'  # Print in cyan
+}
 
 ### START
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-BREW_FILE=$DIR/"brew-formulas.txt"
-APT_PKGS_FILE=$DIR/"apt-packages.txt"
+BREW_FILE="$DIR/brew-formulas.txt"
+APT_PKGS_FILE="$DIR/apt-packages.txt"
 
-case `uname -s` in
+case "$(uname -s)" in
     [Ll]inux)
-        command -v lsb_release &>/dev/null || {
+        if ! command -v lsb_release &>/dev/null; then
             error "Please install lsb-release."
             exit 1
-        }
+        fi
 
-        distro=`lsb_release -cs`
-        case $distro in
-            maya|lisa|natty|oneiric|precise|quantal)
-                output "Installing Ubuntu requirements"
+        output "Installing Ubuntu requirements"
+        export DEBIAN_FRONTEND=noninteractive
 
-                # DEBIAN_FRONTEND=noninteractive is required for silent mysql-server installation
-                export DEBIAN_FRONTEND=noninteractive
-
-                # install packages listed in APT_PKGS_FILE
-                cat $APT_PKGS_FILE | xargs sudo apt-get -y install
-                ;;
-            *)
-                error "Unsupported distribution - $distro"
-                exit 1
-               ;;
-        esac
+        if [[ -r "$APT_PKGS_FILE" ]]; then
+            cat "$APT_PKGS_FILE" | xargs sudo apt-get -y install
+        else
+            error "APT package list file not found: $APT_PKGS_FILE"
+            exit 1
+        fi
         ;;
     Darwin)
-
         if [[ ! -w /usr/local ]]; then
-            cat<<EO
+            cat <<EO
 
-        You need to be able to write to /usr/local for
-        the installation of brew and brew packages.
+You need to be able to write to /usr/local for
+the installation of brew and brew packages.
 
-        Either make sure the group you are in (most likely 'staff')
-        can write to that directory or simply execute the following
-        and re-run the script:
+Either ensure the group you are in (most likely 'staff')
+can write to that directory or execute:
 
-        $ sudo chown -R $USER /usr/local
+    sudo chown -R \$USER /usr/local
+
 EO
-
-            exit 1
-
-        fi
-
-        output "Installing OSX requirements"
-        if [[ ! -r $BREW_FILE ]]; then
-            error "$BREW_FILE does not exist, needed to install brew"
             exit 1
         fi
 
-        # brew errors if the package is already installed
-        for pkg in $(cat $BREW_FILE); do
-            grep $pkg <(brew list) &>/dev/null || {
+        output "Installing macOS requirements"
+        if [[ ! -r "$BREW_FILE" ]]; then
+            error "$BREW_FILE does not exist, needed to install brew packages."
+            exit 1
+        fi
+
+        for pkg in $(cat "$BREW_FILE"); do
+            if ! brew list | grep -q "$pkg"; then
                 output "Installing $pkg"
-                brew install $pkg
-            }
+                brew install "$pkg"
+            fi
         done
 
-        # paths where brew likes to install python scripts
-        PATH=/usr/local/share/python:/usr/local/bin:$PATH
+        PATH="/usr/local/share/python:/usr/local/bin:$PATH"
 
-        command -v pip &>/dev/null || {
+        if ! command -v pip &>/dev/null; then
             output "Installing pip"
             easy_install pip
-        }
+        fi
 
-        if ! grep -Eq ^1.7 <(virtualenv --version 2>/dev/null); then
+        if ! virtualenv --version 2>/dev/null | grep -Eq '^1\.7'; then
             output "Installing virtualenv >1.7"
             pip install 'virtualenv>1.7' virtualenvwrapper
         fi
 
-        command -v coffee &>/dev/null || {
-            output "Installing coffee script"
+        if ! command -v coffee &>/dev/null; then
+            output "Installing CoffeeScript"
             curl --insecure https://npmjs.org/install.sh | sh
             npm install -g coffee-script
-        }
+        fi
         ;;
     *)
         error "Unsupported platform"
